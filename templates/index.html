@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Şifreleme Uygulaması</title>
+<style>
+body {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 20px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+}
+#clientDiv, #serverDiv {
+    border-radius: 12px;
+    padding: 20px;
+    width: 450px;
+    background: white;
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.15);
+}
+#serverDiv {
+    display: none;
+    flex-direction: column;
+}
+textarea {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+}
+button {
+    margin-top: 10px;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1rem;
+}
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+#startServerBtn { background: #667eea; color: white; }
+#startServerBtn:hover { background: #5a67d8; }
+#encryptBtn { background: #48bb78; color: white; }
+#encryptBtn:hover { background: #38a169; }
+#decryptBtn { background: #ed8936; color: white; }
+#decryptBtn:hover { background: #dd6b20; }
+label { margin-top: 10px; display: block; font-weight: bold; }
+input, select {
+    width: 100%;
+    padding: 8px;
+    margin-top: 4px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+}
+#serverEncryptedText, #serverDecryptedText {
+    margin-top: 10px;
+    white-space: pre-wrap;
+    background: #f9fafb;
+    padding: 10px;
+    border-radius: 8px;
+    min-height: 50px;
+    border: 1px solid #ccc;
+}
+.key-section { display: none; }
+h3 { font-size: 1.5rem; margin-bottom: 10px; color: #333; }
+</style>
+</head>
+<body>
+
+<div id="clientDiv">
+    <button id="startServerBtn">Server Başlat</button>
+    <p id="status"></p>
+
+    <label for="method">Şifreleme Yöntemi:</label>
+    <select id="method" disabled>
+        <option value="caesar">Caesar</option>
+        <option value="affine">Affine</option>
+        <option value="vigenere">Vigenere</option>
+        <option value="substitution">Substitution</option>
+    </select>
+
+    <label for="text">Metin:</label>
+    <textarea id="text" rows="4" disabled></textarea>
+
+    <div id="keyInputs">
+        <div id="keyCaesar" class="key-section">
+            <label for="key">Shift (Caesar):</label>
+            <input type="text" id="key" placeholder="Örn: 3" />
+        </div>
+
+        <div id="keyAffine" class="key-section">
+            <label for="a">a (Affine için):</label>
+            <input type="number" id="a" value="5" />
+            <label for="b">b (Affine için):</label>
+            <input type="number" id="b" value="8" />
+        </div>
+
+        <div id="keyVigenere" class="key-section">
+            <label for="keyV">Anahtar (Vigenere):</label>
+            <input type="text" id="keyV" placeholder="Örn: KEY" />
+        </div>
+
+        <div id="keySubstitution" class="key-section">
+            <label for="keyS">26 Harfli Anahtar (Substitution):</label>
+            <input type="text" id="keyS" placeholder="Örn: QWERTYUIOPASDFGHJKLZXCVBNM" />
+        </div>
+    </div>
+
+    <button id="encryptBtn" disabled>Şifrele</button>
+</div>
+
+<div id="serverDiv">
+    <h3>Server</h3>
+    <label>Şifreli Metin:</label>
+    <div id="serverEncryptedText"></div>
+
+    <label for="serverKeyInput">Anahtar Giriniz:</label>
+    <div id="serverKeyContainer"></div>
+
+    <button id="decryptBtn" disabled>Şifre Çöz</button>
+
+    <label>Çözülmüş Metin:</label>
+    <div id="serverDecryptedText"></div>
+</div>
+
+<script>
+const startServerBtn = document.getElementById('startServerBtn');
+const statusP = document.getElementById('status');
+const methodSelect = document.getElementById('method');
+const textArea = document.getElementById('text');
+const encryptBtn = document.getElementById('encryptBtn');
+const serverDiv = document.getElementById('serverDiv');
+const serverEncryptedText = document.getElementById('serverEncryptedText');
+const decryptBtn = document.getElementById('decryptBtn');
+const serverDecryptedText = document.getElementById('serverDecryptedText');
+const serverKeyContainer = document.getElementById('serverKeyContainer');
+
+const keyCaesar = document.getElementById('keyCaesar');
+const keyAffine = document.getElementById('keyAffine');
+const keyVigenere = document.getElementById('keyVigenere');
+const keySubstitution = document.getElementById('keySubstitution');
+
+let storedEncryptedText = "";
+let storedMethod = "";
+
+function setClientActive(active) {
+    methodSelect.disabled = !active;
+    textArea.disabled = !active;
+    encryptBtn.disabled = !active;
+}
+setClientActive(false);
+
+startServerBtn.addEventListener('click', () => {
+    statusP.textContent = "Server bağlandı ✅";
+    setClientActive(true);
+    serverDiv.style.display = 'flex';
+    startServerBtn.disabled = true;
+    updateKeyInputs();
+});
+
+function hideAllKeys() {
+    keyCaesar.style.display = "none";
+    keyAffine.style.display = "none";
+    keyVigenere.style.display = "none";
+    keySubstitution.style.display = "none";
+}
+function updateKeyInputs() {
+    hideAllKeys();
+    const method = methodSelect.value;
+    if (method === "caesar") keyCaesar.style.display = "block";
+    else if (method === "affine") keyAffine.style.display = "block";
+    else if (method === "vigenere") keyVigenere.style.display = "block";
+    else if (method === "substitution") keySubstitution.style.display = "block";
+}
+methodSelect.addEventListener('change', updateKeyInputs);
+updateKeyInputs();
+
+function updateServerKeyInput() {
+    serverKeyContainer.innerHTML = "";
+    if (storedMethod === "caesar") {
+        serverKeyContainer.innerHTML = `<input type="number" id="serverKeyInput" placeholder="Shift değeri girin" />`;
+    } else if (storedMethod === "affine") {
+        serverKeyContainer.innerHTML = `<input type="text" id="serverKeyInput" placeholder="a,b şeklinde girin" />`;
+    } else if (storedMethod === "vigenere") {
+        serverKeyContainer.innerHTML = `<input type="text" id="serverKeyInput" placeholder="Anahtar girin" />`;
+    } else if (storedMethod === "substitution") {
+        serverKeyContainer.innerHTML = `<input type="text" id="serverKeyInput" placeholder="26 harfli anahtar girin" />`;
+    }
+}
+
+function caesarEncrypt(text, shift) {
+    shift = parseInt(shift);
+    return text.replace(/[a-z]/gi, c =>
+        String.fromCharCode(
+            (c.charCodeAt(0) - (c === c.toUpperCase() ? 65 : 97) + shift) % 26 +
+            (c === c.toUpperCase() ? 65 : 97)
+        )
+    );
+}
+function caesarDecrypt(text, shift) {
+    return caesarEncrypt(text, 26 - (parseInt(shift) % 26));
+}
+function affineEncrypt(text, a, b) {
+    const m = 26;
+    return text.replace(/[a-z]/gi, c => {
+        const base = c === c.toUpperCase() ? 65 : 97;
+        return String.fromCharCode(((a * (c.charCodeAt(0) - base) + b) % m) + base);
+    });
+}
+function affineDecrypt(text, a, b) {
+    const m = 26;
+    function modInverse(a, m) {
+        a = ((a % m) + m) % m;
+        for (let x = 1; x < m; x++) if ((a * x) % m === 1) return x;
+        throw new Error("a ve 26 aralarında asal olmalı.");
+    }
+    const a_inv = modInverse(a, m);
+    return text.replace(/[a-z]/gi, c => {
+        const base = c === c.toUpperCase() ? 65 : 97;
+        return String.fromCharCode(
+            (a_inv * ((c.charCodeAt(0) - base - b + m)) % m) + base
+        );
+    });
+}
+function vigenereEncrypt(text, key) {
+    key = key.toUpperCase();
+    let result = "";
+    let j = 0;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (/[A-Z]/i.test(c)) {
+            const base = c === c.toUpperCase() ? 65 : 97;
+            const shift = key[j % key.length].charCodeAt(0) - 65;
+            result += String.fromCharCode(((c.charCodeAt(0) - base + shift) % 26) + base);
+            j++;
+        } else result += c;
+    }
+    return result;
+}
+function vigenereDecrypt(text, key) {
+    key = key.toUpperCase();
+    let result = "";
+    let j = 0;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (/[A-Z]/i.test(c)) {
+            const base = c === c.toUpperCase() ? 65 : 97;
+            const shift = key[j % key.length].charCodeAt(0) - 65;
+            result += String.fromCharCode(((c.charCodeAt(0) - base - shift + 26) % 26) + base);
+            j++;
+        } else result += c;
+    }
+    return result;
+}
+function substitutionEncrypt(text, key) {
+    key = key.toUpperCase();
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    return text.replace(/[A-Z]/gi, c => {
+        const isUpper = c === c.toUpperCase();
+        const idx = alphabet.indexOf(c.toUpperCase());
+        if (idx === -1) return c;
+        const sub = key[idx];
+        return isUpper ? sub : sub.toLowerCase();
+    });
+}
+function substitutionDecrypt(text, key) {
+    key = key.toUpperCase();
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    return text.replace(/[A-Z]/gi, c => {
+        const isUpper = c === c.toUpperCase();
+        const idx = key.indexOf(c.toUpperCase());
+        if (idx === -1) return c;
+        const orig = alphabet[idx];
+        return isUpper ? orig : orig.toLowerCase();
+    });
+}
+
+encryptBtn.addEventListener('click', () => {
+    const method = methodSelect.value;
+    const text = textArea.value.trim();
+    try {
+        if (!text) throw new Error("Metin girin!");
+        if (method === "caesar") {
+            const shift = document.getElementById("key").value.trim();
+            if (!shift) throw new Error("Shift değeri gerekli!");
+            storedMethod = "caesar";
+            storedEncryptedText = caesarEncrypt(text, shift);
+        }
+        else if (method === "affine") {
+            const a = parseInt(document.getElementById("a").value);
+            const b = parseInt(document.getElementById("b").value);
+            if (!a || !b) throw new Error("a ve b değerleri gerekli!");
+            storedMethod = "affine";
+            storedEncryptedText = affineEncrypt(text, a, b);
+        }
+        else if (method === "vigenere") {
+            const key = document.getElementById("keyV").value.trim();
+            if (!key) throw new Error("Anahtar gerekli!");
+            storedMethod = "vigenere";
+            storedEncryptedText = vigenereEncrypt(text, key);
+        }
+        else if (method === "substitution") {
+            const key = document.getElementById("keyS").value.trim();
+            if (!key || key.length !== 26) throw new Error("26 harfli anahtar gerekli!");
+            storedMethod = "substitution";
+            storedEncryptedText = substitutionEncrypt(text, key);
+        }
+        serverEncryptedText.textContent = storedEncryptedText;
+        serverDecryptedText.textContent = "";
+        decryptBtn.disabled = false;
+
+        updateServerKeyInput();
+    } catch (e) {
+        alert(e.message);
+    }
+});
+
+decryptBtn.addEventListener('click', () => {
+    const keyInput = document.getElementById("serverKeyInput");
+    if (!keyInput || !keyInput.value.trim()) {
+        alert("Anahtar girin!");
+        return;
+    }
+    const key = keyInput.value.trim();
+    try {
+        let decrypted = "";
+        if (storedMethod === "caesar") {
+            decrypted = caesarDecrypt(storedEncryptedText, key);
+        }
+        else if (storedMethod === "affine") {
+            const parts = key.split(',');
+            if (parts.length !== 2) throw new Error("Affine için a,b şeklinde girin!");
+            decrypted = affineDecrypt(storedEncryptedText, parseInt(parts[0]), parseInt(parts[1]));
+        }
+        else if (storedMethod === "vigenere") {
+            decrypted = vigenereDecrypt(storedEncryptedText, key);
+        }
+        else if (storedMethod === "substitution") {
+            if (key.length !== 26) throw new Error("26 harfli anahtar gerekli!");
+            decrypted = substitutionDecrypt(storedEncryptedText, key);
+        }
+        serverDecryptedText.textContent = decrypted;
+    } catch (e) {
+        alert(e.message);
+    }
+});
+</script>
+</body>
+</html>
